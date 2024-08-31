@@ -440,7 +440,7 @@ pub(super) async fn split_module(asset: Vc<EcmascriptModuleAsset>) -> Result<Vc<
     Ok(split(
         asset.source().ident(),
         asset.source(),
-        asset.parse(),
+        asset.parse(None),
         asset.options().await?.special_exports,
     ))
 }

@@ -507,17 +507,28 @@ impl EcmascriptModuleAsset {
     }
 
     #[turbo_tasks::function]
-    pub fn parse(&self, part: Option<Vc<ModulePart>>) -> Vc<ParseResult> {
-        let parsed = parse(self.source, Value::new(self.ty), self.transforms);
+    pub async fn parse(self: Vc<Self>, part: Option<Vc<ModulePart>>) -> Result<Vc<ParseResult>> {
+        let this = self.await?;
+
+        let parsed = parse(this.source, Value::new(this.ty), this.transforms);
 
         let parsed = if let Some(part) = part {
-            let split_data = split(self.source.ident(), self.source, parsed);
+            let split_data = split(
+                this.source.ident(),
+                this.source,
+                parsed,
+                this.options.await?.special_exports,
+            );
             part_of_module(split_data, part)
         } else {
             parsed
         };
 
-        apply_transforms(self.source, parsed, self.fragment_transforms)
+        Ok(apply_transforms(
+            this.source,
+            parsed,
+            this.fragment_transforms,
+        ))
     }
 
     #[turbo_tasks::function]
@@ -973,7 +984,6 @@ async fn apply_transforms(
         eval_context,
         globals,
         source_map,
-        top_level_mark,
     } = &*parsed.await?
     else {
         return Ok(parsed);
@@ -1009,7 +1019,7 @@ async fn apply_transforms(
             let transform_context = TransformContext {
                 comments: &merged_comments,
                 source_map,
-                top_level_mark: *top_level_mark,
+                top_level_mark: eval_context.top_level_mark,
                 unresolved_mark: eval_context.unresolved_mark,
                 file_path_str: &fs_path.path,
                 file_name_str: fs_path.file_name(),
@@ -1028,7 +1038,7 @@ async fn apply_transforms(
             let eval_context = EvalContext::new(
                 &program,
                 eval_context.unresolved_mark,
-                *top_level_mark,
+                eval_context.top_level_mark,
                 Some(&comments),
                 Some(source),
             );
@@ -1039,7 +1049,6 @@ async fn apply_transforms(
                 eval_context,
                 globals: globals.clone(),
                 source_map: source_map.clone(),
-                top_level_mark: *top_level_mark,
             }
             .cell())
         },
